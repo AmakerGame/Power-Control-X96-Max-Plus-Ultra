@@ -123,8 +123,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun checkAndGrantUsageAccessSilently() {
         viewModelScope.launch {
             val context = getApplication<Application>()
-            // Automatically enable accessibility service and grant usage permission via root
-            RootUtil.setupSystemPermissionsSilently(context)
+            // Automatically grant usage stats and read logs permissions via root without accessibility service
+            RootUtil.grantPermissionsSilently(context)
             val hasAccess = ForegroundDetector.hasUsageStatsPermission(context)
             _uiState.update { it.copy(hasUsageStatsAccess = hasAccess) }
         }
@@ -190,7 +190,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             // Instantly kill com.qstar.powerui and launch target app
-            RootUtil.killPowerUiAndLaunchApp(targetPackage)
+            RootUtil.instantIntercept(targetPackage)
 
             val appName = state.selectedAppName.ifBlank { targetPackage }
             Toast.makeText(

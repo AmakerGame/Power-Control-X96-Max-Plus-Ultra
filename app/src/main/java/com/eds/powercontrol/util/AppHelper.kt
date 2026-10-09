@@ -73,16 +73,20 @@ object AppHelper {
             val pm = context.packageManager
             val intent = pm.getLaunchIntentForPackage(packageName)
             if (intent != null) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+                intent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION
+                )
                 context.startActivity(intent)
                 Log.d(TAG, "Launched application $packageName via Intent")
                 return true
             }
 
-            // Fallback shell launch if standard launch intent is not defined
-            Log.w(TAG, "Launch intent not found for $packageName, falling back to monkey am start")
-            val cmd = "monkey -p $packageName 1"
-            Runtime.getRuntime().exec(cmd)
+            // Fallback am start if standard launch intent is not defined
+            Log.w(TAG, "Launch intent not found for $packageName, falling back to am start")
+            val cmd = "am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front --activity-no-animation $packageName"
+            Runtime.getRuntime().exec(arrayOf("sh", "-c", cmd))
             return true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to launch $packageName", e)
