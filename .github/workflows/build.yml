@@ -25,10 +25,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Prepare environment files
+      - name: Prepare environment files and keystore
         run: |
           if [ ! -f .env ] && [ -f .env.example ]; then
             cp .env.example .env
+          fi
+          # Restore or generate debug.keystore for debugConfig signing
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           # Ensure old com/example directory is removed if retained from older git commits
           rm -rf app/src/main/java/com/example app/src/test/java/com/example app/src/androidTest/java/com/example
