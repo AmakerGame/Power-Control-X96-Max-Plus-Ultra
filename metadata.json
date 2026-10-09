@@ -1,0 +1,6 @@
+{
+  "name": "Power Control",
+  "description": "Android TV utility for app switching and power control on Android 11 TV boxes",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

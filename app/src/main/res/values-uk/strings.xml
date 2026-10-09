@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Power Control</string>
+    <string name="root_required_title">Надайте руут права</string>
+    <string name="root_required_desc">Руут права необхідні для керування системними службами та примусової зупинки com.qstar.powerui на вашій TV-приставці.</string>
+    <string name="btn_request_root">Запросити root</string>
+    <string name="root_checking">Перевірка root-прав…</string>
+    <string name="root_denied_message">Root-права не надано. Будь ласка, підтвердіть Superuser у діалозі Magisk або SuperSU.</string>
+    <string name="root_granted_success">Root-права успішно надано!</string>
+
+    <string name="header_app_selection">Вибір програми</string>
+    <string name="label_mode_selection">Режим роботи:</string>
+    <string name="mode_none">Нічого</string>
+    <string name="mode_system">Системна</string>
+    <string name="mode_user">Користувацька</string>
+
+    <string name="btn_save">Зберегти</string>
+    <string name="saved_successfully">Налаштування успішно збережено</string>
+    <string name="build_label">Збірка</string>
+    <string name="build_value">X96 Max Plus Ultra(SlimBoxTV)</string>
+
+    <string name="status_monitoring_active">Моніторинг активний: %1$s (%2$s)</string>
+    <string name="status_monitoring_inactive">Моніторинг зупинено (Обрано: Нічого)</string>
+    <string name="target_package_intercepted">Ціль перехоплення: com.qstar.powerui</string>
+
+    <string name="filter_all">Всі</string>
+    <string name="search_apps_hint">Пошук програм…</string>
+    <string name="selected_app_label">Обрана програма:</string>
+    <string name="no_app_selected">Програму не обрано</string>
+    <string name="test_interception_btn">Тест примусової зупинки та запуску</string>
+    <string name="test_executed">Тест виконано: force-stop та запуск %1$s</string>
+
+    <string name="grant_usage_stats_btn">Надати доступ до статистики</string>
+    <string name="usage_access_needed">Потрібен дозвіл на доступ до статистики для відстеження активної програми без root.</string>
+    <string name="service_notification_title">Power Control працює</string>
+    <string name="service_notification_desc">Відстеження програм для перехоплення com.qstar.powerui</string>
+
+    <string name="ad_banner_title">SlimBoxTV Інструменти та Утиліти</string>
+    <string name="ad_banner_subtitle">Оптимізовано для Amlogic та Android 11 TV приставок</string>
+</resources>
