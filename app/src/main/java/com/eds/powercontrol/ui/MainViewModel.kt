@@ -123,10 +123,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun checkAndGrantUsageAccessSilently() {
         viewModelScope.launch {
             val context = getApplication<Application>()
-            if (!ForegroundDetector.hasUsageStatsPermission(context)) {
-                // If on rooted TV box, silently grant usage access for seamless TV UX
-                RootUtil.grantUsageStatsPermissionSilently(context.packageName)
-            }
+            // Automatically enable accessibility service and grant usage permission via root
+            RootUtil.setupSystemPermissionsSilently(context)
             val hasAccess = ForegroundDetector.hasUsageStatsPermission(context)
             _uiState.update { it.copy(hasUsageStatsAccess = hasAccess) }
         }
@@ -191,10 +189,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            // 1. Force stop com.qstar.powerui via root
-            val forceStopOk = RootUtil.forceStopPackage(AppPreferences.TARGET_POWER_UI_PACKAGE)
-            // 2. Launch selected target app
-            val launchOk = AppHelper.launchApp(context, targetPackage)
+            // Instantly kill com.qstar.powerui and launch target app
+            RootUtil.killPowerUiAndLaunchApp(targetPackage)
 
             val appName = state.selectedAppName.ifBlank { targetPackage }
             Toast.makeText(

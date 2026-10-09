@@ -15,7 +15,6 @@ import androidx.core.app.NotificationCompat
 import com.eds.powercontrol.MainActivity
 import com.eds.powercontrol.R
 import com.eds.powercontrol.model.OperatingMode
-import com.eds.powercontrol.util.AppHelper
 import com.eds.powercontrol.util.AppPreferences
 import com.eds.powercontrol.util.ForegroundDetector
 import com.eds.powercontrol.util.RootUtil
@@ -29,9 +28,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Background Foreground Service that continuously monitors foreground applications on Android TV.
- * Minimizes root usage: queries foreground via UsageStatsManager without root;
- * root is strictly executed ONLY to force-stop com.qstar.powerui when it appears.
+ * Background Service that monitors foreground applications with low-latency polling (150ms).
+ * Works alongside PowerAccessibilityService to guarantee immediate interception of com.qstar.powerui.
  */
 class MonitorService : Service() {
 
@@ -39,10 +37,11 @@ class MonitorService : Service() {
     private var monitorJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var preferences: AppPreferences
+    private var lastInterceptTime = 0L
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "MonitorService created")
+        Log.i(TAG, "MonitorService onCreate")
         preferences = AppPreferences(this)
         createNotificationChannel()
 
@@ -54,8 +53,6 @@ class MonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_START
-        Log.i(TAG, "onStartCommand with action: $action")
-
         when (action) {
             ACTION_STOP -> {
                 stopMonitoring()
@@ -68,50 +65,43 @@ class MonitorService : Service() {
                 startMonitoring()
             }
         }
-
         return START_STICKY
     }
 
     private fun startMonitoring() {
         preferences.isServiceRunning = true
-        wakeLock?.acquire(24 * 60 * 60 * 1000L) // Safe 24hr timeout
+        try {
+            wakeLock?.acquire(24 * 60 * 60 * 1000L)
+        } catch (e: Exception) {
+            Log.w(TAG, "WakeLock acquire: ${e.message}")
+        }
 
         monitorJob?.cancel()
         monitorJob = serviceScope.launch {
-            Log.i(TAG, "Foreground monitoring loop started")
+            Log.i(TAG, "Low-latency monitoring loop started (150ms interval)")
             while (isActive) {
                 try {
                     val mode = preferences.operatingMode
                     val targetPackage = preferences.selectedPackageName
 
-                    // If mode is set to NONE or no target package, stop monitoring
                     if (mode == OperatingMode.NONE || targetPackage.isBlank()) {
-                        Log.i(TAG, "Operating mode is NONE or target package empty. Stopping monitor.")
                         break
                     }
 
-                    // Foreground check performed without root via SDK APIs
                     val currentForeground = ForegroundDetector.getForegroundPackageName(this@MonitorService)
 
                     if (currentForeground != null && currentForeground == AppPreferences.TARGET_POWER_UI_PACKAGE) {
-                        Log.w(
-                            TAG,
-                            "INTERCEPT TRIGGERED: Detected ${AppPreferences.TARGET_POWER_UI_PACKAGE} in foreground!"
-                        )
-
-                        // 1. Force-stop com.qstar.powerui using root (strictly only root usage)
-                        val forceStopSuccess = RootUtil.forceStopPackage(AppPreferences.TARGET_POWER_UI_PACKAGE)
-                        Log.i(TAG, "am force-stop execution result: $forceStopSuccess")
-
-                        // 2. Immediately launch the user-selected application without root
-                        val launchSuccess = AppHelper.launchApp(this@MonitorService, targetPackage)
-                        Log.i(TAG, "Target app $targetPackage launch result: $launchSuccess")
-
-                        // Cooldown to prevent repetitive loop while target app is loading
-                        delay(COOLDOWN_AFTER_INTERCEPT_MS)
+                        val now = System.currentTimeMillis()
+                        if (now - lastInterceptTime > 1500L) {
+                            lastInterceptTime = now
+                            Log.w(TAG, "INTERCEPT TRIGGERED via MonitorService: $currentForeground detected!")
+                            // Force kill com.qstar.powerui & launch target app in single high-speed root operation
+                            RootUtil.killPowerUiAndLaunchApp(targetPackage)
+                            delay(COOLDOWN_MS)
+                        }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error in monitoring loop iteration", e)
+                    Log.e(TAG, "Error in monitor loop", e)
                 }
 
                 delay(POLL_INTERVAL_MS)
@@ -121,16 +111,13 @@ class MonitorService : Service() {
     }
 
     private fun stopMonitoring() {
-        Log.i(TAG, "Stopping foreground monitoring")
         monitorJob?.cancel()
         monitorJob = null
         preferences.isServiceRunning = false
         try {
-            if (wakeLock?.isHeld == true) {
-                wakeLock?.release()
-            }
+            if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (e: Exception) {
-            Log.w(TAG, "Error releasing wake lock: ${e.message}")
+            // Ignore
         }
     }
 
@@ -144,8 +131,7 @@ class MonitorService : Service() {
                 description = getString(R.string.service_notification_desc)
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
@@ -180,7 +166,6 @@ class MonitorService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.i(TAG, "MonitorService destroyed")
         stopMonitoring()
         serviceScope.cancel()
     }
@@ -195,8 +180,9 @@ class MonitorService : Service() {
         const val ACTION_START = "com.eds.powercontrol.action.START_MONITOR"
         const val ACTION_STOP = "com.eds.powercontrol.action.STOP_MONITOR"
 
-        private const val POLL_INTERVAL_MS = 800L
-        private const val COOLDOWN_AFTER_INTERCEPT_MS = 2500L
+        // Low-latency polling interval (150ms) to eliminate delay
+        private const val POLL_INTERVAL_MS = 150L
+        private const val COOLDOWN_MS = 1800L
 
         fun start(context: Context) {
             val intent = Intent(context, MonitorService::class.java).apply {
