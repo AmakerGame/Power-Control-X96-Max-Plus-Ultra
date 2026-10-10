@@ -16,7 +16,9 @@ import com.eds.powercontrol.MainActivity
 import com.eds.powercontrol.R
 import com.eds.powercontrol.model.OperatingMode
 import com.eds.powercontrol.util.AppPreferences
+import com.eds.powercontrol.util.ForegroundDetector
 import com.eds.powercontrol.util.RootDaemonManager
+import com.eds.powercontrol.util.RootUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,15 +29,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
- * Background Service that manages the lifecycle of the root monitoring daemon.
- * Ensures the root process runs continuously and restarts it if necessary.
+ * Background Service that maintains active monitoring and supervises the root daemon process.
+ * Provides dual-layer interception: foreground polling in Kotlin + persistent root daemon in shell.
  */
 class MonitorService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var supervisorJob: Job? = null
+    private var monitorJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var preferences: AppPreferences
+    private var lastInterceptTime = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -81,35 +84,47 @@ class MonitorService : Service() {
             return
         }
 
-        // Start the root daemon
+        // 1. Start persistent Root Daemon process
         serviceScope.launch(Dispatchers.IO) {
             RootDaemonManager.startDaemon(this@MonitorService, mode, targetPackage)
         }
 
-        // Supervisor loop: periodically verify daemon health
-        supervisorJob?.cancel()
-        supervisorJob = serviceScope.launch {
+        // 2. Continuous parallel monitoring loop
+        monitorJob?.cancel()
+        monitorJob = serviceScope.launch {
             while (isActive) {
-                delay(3000L)
-                val currentMode = preferences.operatingMode
-                val currentTarget = preferences.selectedPackageName
+                try {
+                    val currentMode = preferences.operatingMode
+                    val currentTarget = preferences.selectedPackageName
 
-                if (currentMode == OperatingMode.NONE || currentTarget.isBlank()) {
-                    break
+                    if (currentMode == OperatingMode.NONE || currentTarget.isBlank()) {
+                        break
+                    }
+
+                    // Foreground app check via UsageStats / ActivityManager
+                    val foreground = ForegroundDetector.getForegroundPackageName(this@MonitorService)
+                    if (foreground != null && foreground == AppPreferences.TARGET_POWER_UI_PACKAGE) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastInterceptTime > 1500L) {
+                            lastInterceptTime = now
+                            Log.w(TAG, "Service detected $foreground -> Executing root intercept for $currentTarget")
+                            RootUtil.killPowerUiAndLaunch(this@MonitorService, currentTarget)
+                            delay(1500L)
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in service monitor loop", e)
                 }
 
-                val isRunning = RootDaemonManager.isDaemonRunning(this@MonitorService)
-                if (!isRunning) {
-                    Log.w(TAG, "Root daemon not running, restarting...")
-                    RootDaemonManager.startDaemon(this@MonitorService, currentMode, currentTarget)
-                }
+                delay(200L)
             }
+            preferences.isServiceRunning = false
         }
     }
 
     private fun stopMonitoring() {
-        supervisorJob?.cancel()
-        supervisorJob = null
+        monitorJob?.cancel()
+        monitorJob = null
         preferences.isServiceRunning = false
 
         serviceScope.launch(Dispatchers.IO) {

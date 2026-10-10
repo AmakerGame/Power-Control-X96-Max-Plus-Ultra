@@ -4,15 +4,12 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.BufferedReader
-import java.io.DataOutputStream
 import java.io.File
-import java.io.InputStreamReader
 import java.util.concurrent.TimeUnit
 
 /**
- * Ultra-fast root engine with warm shell caching to eliminate the 400ms su startup delay.
- * Allows instant process termination before com.qstar.powerui can render its UI on screen.
+ * Robust Root Utility for Android TV (SlimBoxTV / Amlogic).
+ * Executes su commands cleanly with proper stream draining to prevent pipe deadlocks.
  */
 object RootUtil {
     private const val TAG = "RootUtil"
@@ -29,9 +26,6 @@ object RootUtil {
         "/data/local/su"
     )
 
-    private var warmSuProcess: Process? = null
-    private var warmOutputStream: DataOutputStream? = null
-
     fun isSuBinaryPresent(): Boolean {
         for (path in SU_BINARY_PATHS) {
             if (File(path).exists()) return true
@@ -41,14 +35,10 @@ object RootUtil {
 
     suspend fun checkRootAccess(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            os.writeBytes("id\nexit\n")
-            os.flush()
-
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val output = reader.readLine() ?: ""
-            val exited = process.waitFor(2, TimeUnit.SECONDS)
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val output = process.inputStream.bufferedReader().readLine() ?: ""
+            process.errorStream.bufferedReader().readLines()
+            val exited = process.waitFor(3, TimeUnit.SECONDS)
             if (exited && (process.exitValue() == 0 || output.contains("uid=0"))) {
                 return@withContext true
             }
@@ -60,15 +50,11 @@ object RootUtil {
 
     suspend fun requestRootAccess(): Boolean = withContext(Dispatchers.IO) {
         try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            os.writeBytes("id\nexit\n")
-            os.flush()
-
-            val reader = BufferedReader(InputStreamReader(process.inputStream))
-            val line = reader.readLine() ?: ""
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            val output = process.inputStream.bufferedReader().readLine() ?: ""
+            process.errorStream.bufferedReader().readLines()
             val exited = process.waitFor(10, TimeUnit.SECONDS)
-            return@withContext exited && (process.exitValue() == 0 || line.contains("uid=0"))
+            return@withContext exited && (process.exitValue() == 0 || output.contains("uid=0"))
         } catch (e: Exception) {
             Log.e(TAG, "Error requesting root access", e)
         }
@@ -76,114 +62,45 @@ object RootUtil {
     }
 
     /**
-     * Initializes a warm root shell so subsequent kill/launch commands execute in <1ms without spawn overhead.
+     * Executes a command string as root.
+     * Starts background reader threads on stdout/stderr to prevent OS pipe buffer overflow.
      */
-    @Synchronized
-    fun ensureWarmShell() {
-        if (warmSuProcess == null || !isProcessAlive(warmSuProcess)) {
-            try {
-                warmSuProcess = Runtime.getRuntime().exec("su")
-                warmOutputStream = DataOutputStream(warmSuProcess!!.outputStream)
-                Log.d(TAG, "Warm root shell connected")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed connecting warm root shell: ${e.message}")
-                warmSuProcess = null
-                warmOutputStream = null
-            }
-        }
-    }
-
-    @Synchronized
-    fun closeWarmShell() {
-        try {
-            warmOutputStream?.writeBytes("exit\n")
-            warmOutputStream?.flush()
-            warmOutputStream?.close()
-            warmSuProcess?.destroy()
-        } catch (e: Exception) {
-            // Ignore
-        } finally {
-            warmOutputStream = null
-            warmSuProcess = null
-            Log.d(TAG, "Warm root shell closed")
-        }
-    }
-
-    private fun isProcessAlive(p: Process?): Boolean {
-        if (p == null) return false
+    fun executeRootCommand(command: String): Boolean {
         return try {
-            p.exitValue()
-            false
-        } catch (e: IllegalThreadStateException) {
-            true
-        }
-    }
-
-    /**
-     * Instantly kills com.qstar.powerui and launches the target application via the warm shell.
-     * Executes in under 1 millisecond so com.qstar.powerui NEVER has time to render its UI.
-     */
-    fun instantIntercept(targetPackage: String) {
-        synchronized(this) {
-            ensureWarmShell()
-            val os = warmOutputStream
-            if (os != null) {
-                try {
-                    // Send kill commands first to abort powerui before it draws
-                    os.writeBytes("am force-stop com.qstar.powerui\n")
-                    os.writeBytes("pkill -9 -f com.qstar.powerui\n")
-                    os.writeBytes("kill -9 $(pidof com.qstar.powerui) 2>/dev/null\n")
-
-                    // Launch user app immediately without transition animations
-                    if (targetPackage.isNotBlank()) {
-                        os.writeBytes("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front --activity-no-animation $targetPackage 2>/dev/null || am start $targetPackage 2>/dev/null\n")
-                    }
-                    os.flush()
-                    Log.i(TAG, "instantIntercept sent commands for $targetPackage")
-                    return
-                } catch (e: Exception) {
-                    Log.e(TAG, "Warm shell write failed, reconnecting", e)
-                    closeWarmShell()
-                }
-            }
-        }
-
-        // Fallback cold execution if warm shell was unavailable
-        try {
-            val process = Runtime.getRuntime().exec("su")
-            val coldOs = DataOutputStream(process.outputStream)
-            coldOs.writeBytes("am force-stop com.qstar.powerui\n")
-            coldOs.writeBytes("pkill -9 -f com.qstar.powerui\n")
-            coldOs.writeBytes("kill -9 $(pidof com.qstar.powerui) 2>/dev/null\n")
-            if (targetPackage.isNotBlank()) {
-                coldOs.writeBytes("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER --activity-brought-to-front --activity-no-animation $targetPackage 2>/dev/null || am start $targetPackage 2>/dev/null\n")
-            }
-            coldOs.writeBytes("exit\n")
-            coldOs.flush()
-            process.waitFor(2, TimeUnit.SECONDS)
+            val process = Runtime.getRuntime().exec(arrayOf("su", "-c", command))
+            // Always drain stdout and stderr so the process never blocks on full pipe
+            Thread {
+                try { process.inputStream.bufferedReader().readLines() } catch (ignored: Exception) {}
+            }.start()
+            Thread {
+                try { process.errorStream.bufferedReader().readLines() } catch (ignored: Exception) {}
+            }.start()
+            val exited = process.waitFor(3, TimeUnit.SECONDS)
+            exited && (process.exitValue() == 0)
         } catch (e: Exception) {
-            Log.e(TAG, "Fallback cold execution failed", e)
+            Log.e(TAG, "Root command execution error: $command", e)
+            false
         }
     }
 
     /**
-     * Grants PACKAGE_USAGE_STATS and READ_LOGS permissions silently via root.
-     * No Accessibility Services are touched.
+     * Instantly kills com.qstar.powerui and launches the target package.
+     */
+    fun killPowerUiAndLaunch(context: Context, targetPackage: String): Boolean {
+        if (targetPackage.isBlank()) return false
+        val cmd = "am force-stop com.qstar.powerui; kill -9 \$(pidof com.qstar.powerui) 2>/dev/null; am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $targetPackage 2>/dev/null || am start $targetPackage 2>/dev/null"
+        Log.i(TAG, "killPowerUiAndLaunch executing for $targetPackage")
+        val rootOk = executeRootCommand(cmd)
+        // Also call Android launch intent from context as complement
+        AppHelper.launchApp(context, targetPackage)
+        return rootOk
+    }
+
+    /**
+     * Silently grants PACKAGE_USAGE_STATS permission via root.
      */
     suspend fun grantPermissionsSilently(context: Context): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val pkg = context.packageName
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            os.writeBytes("pm grant $pkg android.permission.PACKAGE_USAGE_STATS\n")
-            os.writeBytes("pm grant $pkg android.permission.READ_LOGS\n")
-            os.writeBytes("exit\n")
-            os.flush()
-            process.waitFor(2, TimeUnit.SECONDS)
-            return@withContext true
-        } catch (e: Exception) {
-            Log.w(TAG, "Silent permission grant: ${e.message}")
-            return@withContext false
-        }
+        val pkg = context.packageName
+        executeRootCommand("pm grant $pkg android.permission.PACKAGE_USAGE_STATS")
     }
 }

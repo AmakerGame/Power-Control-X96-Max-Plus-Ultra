@@ -197,8 +197,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            // Test direct intercept via root
-            val ok = RootDaemonManager.testDirectIntercept(targetPackage)
+            // Test direct intercept via root and Android intent
+            val ok = RootUtil.killPowerUiAndLaunch(context, targetPackage)
 
             val appName = state.selectedAppName.ifBlank { targetPackage }
             Toast.makeText(

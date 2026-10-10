@@ -5,7 +5,6 @@ import android.util.Log
 import com.eds.powercontrol.model.OperatingMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.DataOutputStream
 import java.io.File
 
 /**
@@ -44,7 +43,7 @@ object RootDaemonManager {
             appendLine("TARGET_UI=\"com.qstar.powerui\"")
             appendLine()
             appendLine("echo \"${d}${d}\" > \"${d}PID_FILE\"")
-            appendLine("echo \"STARTED ${d}(date +%s)\" > \"${d}STATUS_FILE\"")
+            appendLine("echo \"RUNNING ${d}(date +%s)\" > \"${d}STATUS_FILE\"")
             appendLine()
             appendLine("while true; do")
             appendLine("    if [ -f \"${d}CONF_FILE\" ]; then")
@@ -54,7 +53,7 @@ object RootDaemonManager {
             appendLine()
             appendLine("        if [ \"${d}MODE\" = \"SYSTEM\" ] || [ \"${d}MODE\" = \"USER\" ]; then")
             appendLine("            if [ -n \"${d}TARGET_PKG\" ]; then")
-            appendLine("                FOCUS=\"${d}(dumpsys window 2>/dev/null | grep -E 'mCurrentFocus|mFocusedApp')\"")
+            appendLine("                FOCUS=\"${d}(dumpsys window 2>/dev/null | grep -m 1 'mCurrentFocus')\"")
             appendLine("                case \"${d}FOCUS\" in")
             appendLine("                    *\"${d}TARGET_UI\"*)")
             appendLine("                        echo \"INTERCEPT ${d}(date +%s) ${d}TARGET_PKG\" >> \"${d}STATUS_FILE\"")
@@ -67,7 +66,7 @@ object RootDaemonManager {
             appendLine("            fi")
             appendLine("        fi")
             appendLine("    fi")
-            appendLine("    sleep 0.15 2>/dev/null || usleep 150000 2>/dev/null || sleep 1")
+            appendLine("    sleep 0.2 2>/dev/null || usleep 200000 2>/dev/null || sleep 1")
             appendLine("done")
         }.toString()
 
@@ -98,48 +97,22 @@ TARGET_PKG=$targetPackage
         val pid = pidFile.readText().trim()
         if (pid.isBlank()) return@withContext false
 
-        try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            os.writeBytes("kill -0 $pid 2>/dev/null && echo ALIVE\nexit\n")
-            os.flush()
-
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-            return@withContext output.contains("ALIVE")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to check daemon PID: ${e.message}")
-        }
-        return@withContext false
+        val cmd = "kill -0 $pid 2>/dev/null"
+        return@withContext RootUtil.executeRootCommand(cmd)
     }
 
     /**
-     * Starts the root daemon in the background via su.
+     * Starts the root daemon in the background via su without relying on nohup.
      */
     suspend fun startDaemon(context: Context, mode: OperatingMode, targetPackage: String): Boolean = withContext(Dispatchers.IO) {
         deployScript(context)
         writeConfig(context, mode, targetPackage)
 
         val scriptPath = getScriptFile(context).absolutePath
-
-        try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            // Kill any old instance first
-            os.writeBytes("pkill -9 -f $DAEMON_SCRIPT_NAME 2>/dev/null\n")
-            // Launch as background root process detached with nohup
-            os.writeBytes("chmod 755 $scriptPath\n")
-            os.writeBytes("nohup /system/bin/sh $scriptPath > /dev/null 2>&1 &\n")
-            os.writeBytes("exit\n")
-            os.flush()
-            process.waitFor()
-
-            Log.i(TAG, "Started daemon via root: $scriptPath")
-            return@withContext true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed starting root daemon", e)
-        }
-        return@withContext false
+        val cmd = "pkill -9 -f $DAEMON_SCRIPT_NAME 2>/dev/null; chmod 755 $scriptPath; (/system/bin/sh $scriptPath >/dev/null 2>&1 &)"
+        val ok = RootUtil.executeRootCommand(cmd)
+        Log.i(TAG, "Started daemon via root: $ok")
+        return@withContext ok
     }
 
     /**
@@ -150,45 +123,14 @@ TARGET_PKG=$targetPackage
         val pidFile = getPidFile(context)
         val pid = if (pidFile.exists()) pidFile.readText().trim() else ""
 
-        try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            if (pid.isNotBlank()) {
-                os.writeBytes("kill -9 $pid 2>/dev/null\n")
-            }
-            os.writeBytes("pkill -9 -f $DAEMON_SCRIPT_NAME 2>/dev/null\n")
-            os.writeBytes("exit\n")
-            os.flush()
-            process.waitFor()
-
-            pidFile.delete()
-            Log.i(TAG, "Stopped daemon")
-            return@withContext true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed stopping root daemon", e)
+        val cmd = if (pid.isNotBlank()) {
+            "kill -9 $pid 2>/dev/null; pkill -9 -f $DAEMON_SCRIPT_NAME 2>/dev/null"
+        } else {
+            "pkill -9 -f $DAEMON_SCRIPT_NAME 2>/dev/null"
         }
-        return@withContext false
-    }
-
-    /**
-     * Directly executes test interception via root (am force-stop + am start).
-     */
-    suspend fun testDirectIntercept(targetPackage: String): Boolean = withContext(Dispatchers.IO) {
-        if (targetPackage.isBlank()) return@withContext false
-        try {
-            val process = Runtime.getRuntime().exec("su")
-            val os = DataOutputStream(process.outputStream)
-            os.writeBytes("am force-stop com.qstar.powerui\n")
-            os.writeBytes("kill -9 $(pidof com.qstar.powerui) 2>/dev/null\n")
-            os.writeBytes("am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $targetPackage 2>/dev/null || am start $targetPackage 2>/dev/null\n")
-            os.writeBytes("exit\n")
-            os.flush()
-            process.waitFor()
-            Log.i(TAG, "testDirectIntercept executed for $targetPackage")
-            return@withContext true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed testDirectIntercept", e)
-        }
-        return@withContext false
+        val ok = RootUtil.executeRootCommand(cmd)
+        pidFile.delete()
+        Log.i(TAG, "Stopped daemon: $ok")
+        return@withContext ok
     }
 }

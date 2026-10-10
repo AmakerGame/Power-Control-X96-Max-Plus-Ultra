@@ -4,18 +4,15 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Circular Power Ring Arc with gap at the top -->
-    <path
-        android:pathData="M 36,36 A 25,25 0 1 0 72,36"
-        android:strokeWidth="6"
-        android:strokeColor="#00E5FF"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000" />
-    <!-- Vertical Power Bar -->
-    <path
-        android:pathData="M 54,20 L 54,44"
-        android:strokeWidth="6"
-        android:strokeColor="#00E5FF"
-        android:strokeLineCap="round"
-        android:fillColor="#00000000" />
+    <!-- Group centered with 18dp padding in 108dp adaptive icon canvas -->
+    <group
+        android:scaleX="3.0"
+        android:scaleY="3.0"
+        android:translateX="18"
+        android:translateY="18">
+        <!-- Official Google Material Power Icon Path (24x24 scaled by 3) -->
+        <path
+            android:fillColor="#00E5FF"
+            android:pathData="M13,3h-2v10h2V3z M17.83,5.17l-1.42,1.42C17.99,7.86 19,9.81 19,12c0,3.87 -3.13,7 -7,7s-7,-3.13 -7,-7c0,-2.19 1.01,-4.14 2.58,-5.42L6.17,5.17C4.23,6.82 3,9.26 3,12c0,4.97 4.03,9 9,9s9,-4.03 9,-9C21,9.26 19.77,6.82 17.83,5.17z" />
+    </group>
 </vector>
