@@ -36,8 +36,8 @@ jobs:
           elif [ ! -f debug.keystore ]; then
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
-          # Ensure old com/example directory is removed if retained from older git commits
-          rm -rf app/src/main/java/com/example app/src/test/java/com/example app/src/androidTest/java/com/example
+          # Ensure old legacy directories are removed if retained from older git commits
+          rm -rf app/src/main/java/com/example app/src/main/java/com/eds app/src/test/java/com/example app/src/test/java/com/eds app/src/androidTest/java/com/example app/src/androidTest/java/com/eds
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -51,6 +51,6 @@ jobs:
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: power-control-debug-apk
+          name: powerui-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14

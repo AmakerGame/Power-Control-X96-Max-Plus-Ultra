@@ -1,40 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Power Control</string>
-    <string name="root_required_title">Grant root access</string>
-    <string name="root_required_desc">Root access is required to control system services and force-stop com.qstar.powerui on your Android TV box.</string>
-    <string name="btn_request_root">Request root</string>
-    <string name="root_checking">Checking root permissions…</string>
-    <string name="root_denied_message">Root permissions not granted. Please allow Superuser access in Magisk or SuperSU.</string>
-    <string name="root_granted_success">Root access granted!</string>
-
-    <string name="header_app_selection">App selection</string>
-    <string name="label_mode_selection">Operating mode:</string>
-    <string name="mode_none">None</string>
-    <string name="mode_system">System</string>
-    <string name="mode_user">User</string>
-
-    <string name="btn_save">Save</string>
-    <string name="saved_successfully">Settings saved successfully</string>
-    <string name="build_label">Build</string>
-    <string name="build_value">X96 Max Plus Ultra(SlimBoxTV)</string>
-
-    <string name="status_monitoring_active">Monitoring active: %1$s (%2$s)</string>
-    <string name="status_monitoring_inactive">Monitoring inactive (None selected)</string>
-    <string name="target_package_intercepted">Interception trigger: com.qstar.powerui</string>
-
-    <string name="filter_all">All</string>
-    <string name="search_apps_hint">Search apps…</string>
-    <string name="selected_app_label">Selected target app:</string>
-    <string name="no_app_selected">No app selected</string>
-    <string name="test_interception_btn">Test force-stop &amp; launch</string>
-    <string name="test_executed">Interception tested: executed force-stop &amp; launched %1$s</string>
-
-    <string name="grant_usage_stats_btn">Grant Usage Access</string>
-    <string name="usage_access_needed">Usage access permission is needed to monitor foreground apps without root.</string>
-    <string name="service_notification_title">Power Control Active</string>
-    <string name="service_notification_desc">Monitoring foreground apps to intercept com.qstar.powerui</string>
-
-    <string name="ad_banner_title">SlimBoxTV Tools &amp; Utilities</string>
-    <string name="ad_banner_subtitle">Optimized for Amlogic &amp; Android 11 TV Boxes</string>
+    <string name="app_name">PowerUI</string>
+    <string name="settings_title">PowerUI</string>
+    <string name="settings_subtitle">Select target application to launch automatically:</string>
+    <string name="current_target_label">Active target:</string>
+    <string name="target_none_selected">None (opens Settings)</string>
+    <string name="btn_clear">Clear</string>
+    <string name="btn_launch_target">Launch now</string>
+    <string name="toast_saved">Target set: %1$s</string>
+    <string name="toast_cleared">Selection cleared</string>
+    <string name="toast_launched">Launching %1$s</string>
+    <string name="toast_no_target">No target app selected</string>
+    <string name="loading_apps">Loading installed applications…</string>
+    <string name="no_apps_found">No launchable applications found</string>
 </resources>

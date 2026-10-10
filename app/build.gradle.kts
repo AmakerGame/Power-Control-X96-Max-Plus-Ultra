@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-  namespace = "com.eds.powercontrol"
+  namespace = "com.qstar.powerui"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.eds.powercontrol"
+    applicationId = "com.qstar.powerui"
     minSdk = 30
     targetSdk = 30
     versionCode = 1
@@ -77,6 +77,8 @@ secrets {
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
+  implementation(libs.androidx.appcompat)
+  implementation(libs.androidx.recyclerview)
   implementation(platform(libs.androidx.compose.bom))
   implementation("androidx.leanback:leanback:1.0.0")
   // implementation(libs.accompanist.permissions)

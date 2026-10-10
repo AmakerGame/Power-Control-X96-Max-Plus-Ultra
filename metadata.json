@@ -1,6 +1,6 @@
 {
-  "name": "Power Control",
-  "description": "Android TV utility for app switching and power control on Android 11 TV boxes",
+  "name": "PowerUI",
+  "description": "Fast proxy launcher and target application selector",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
