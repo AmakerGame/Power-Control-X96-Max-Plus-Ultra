@@ -16,8 +16,7 @@ import com.eds.powercontrol.MainActivity
 import com.eds.powercontrol.R
 import com.eds.powercontrol.model.OperatingMode
 import com.eds.powercontrol.util.AppPreferences
-import com.eds.powercontrol.util.ForegroundDetector
-import com.eds.powercontrol.util.RootUtil
+import com.eds.powercontrol.util.RootDaemonManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,23 +25,17 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.io.BufferedReader
-import java.io.InputStreamReader
 
 /**
- * High-performance background monitoring service for Android TV.
- * Uses real-time kernel logcat event streaming combined with fast polling to catch com.qstar.powerui
- * before it has time to render its UI window on screen.
- * Does NOT use any Accessibility Services.
+ * Background Service that manages the lifecycle of the root monitoring daemon.
+ * Ensures the root process runs continuously and restarts it if necessary.
  */
 class MonitorService : Service() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var logcatJob: Job? = null
-    private var pollJob: Job? = null
+    private var supervisorJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
     private lateinit var preferences: AppPreferences
-    private var lastInterceptTime = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -80,79 +73,49 @@ class MonitorService : Service() {
             Log.w(TAG, "WakeLock acquire: ${e.message}")
         }
 
-        // Prepare warm root shell for <1ms execution
-        serviceScope.launch(Dispatchers.IO) {
-            RootUtil.ensureWarmShell()
-        }
-
-        // Stream 1: Real-time event detection via kernel activity events (0ms latency)
-        logcatJob?.cancel()
-        logcatJob = serviceScope.launch(Dispatchers.IO) {
-            var process: Process? = null
-            try {
-                // Clear old buffer and listen strictly to process and focus events
-                Runtime.getRuntime().exec("logcat -c").waitFor()
-                val cmd = arrayOf("logcat", "-v", "brief", "-b", "events", "am_focused_activity:I", "am_proc_start:I", "*:S")
-                process = Runtime.getRuntime().exec(cmd)
-                val reader = BufferedReader(InputStreamReader(process.inputStream))
-
-                while (isActive) {
-                    val line = reader.readLine() ?: break
-                    if (line.contains(AppPreferences.TARGET_POWER_UI_PACKAGE)) {
-                        handleInterceptTrigger("EventLog")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.d(TAG, "Event log monitoring interrupted: ${e.message}")
-            } finally {
-                process?.destroy()
-            }
-        }
-
-        // Stream 2: Fast polling fallback (100ms)
-        pollJob?.cancel()
-        pollJob = serviceScope.launch {
-            while (isActive) {
-                try {
-                    val mode = preferences.operatingMode
-                    val targetPackage = preferences.selectedPackageName
-
-                    if (mode == OperatingMode.NONE || targetPackage.isBlank()) {
-                        break
-                    }
-
-                    val currentForeground = ForegroundDetector.getForegroundPackageName(this@MonitorService)
-                    if (currentForeground != null && currentForeground == AppPreferences.TARGET_POWER_UI_PACKAGE) {
-                        handleInterceptTrigger("Polling")
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in poll loop", e)
-                }
-                delay(100L)
-            }
-            preferences.isServiceRunning = false
-        }
-    }
-
-    private fun handleInterceptTrigger(source: String) {
-        val now = System.currentTimeMillis()
-        if (now - lastInterceptTime < 1500L) return
-        lastInterceptTime = now
-
+        val mode = preferences.operatingMode
         val targetPackage = preferences.selectedPackageName
-        if (targetPackage.isBlank()) return
 
-        Log.w(TAG, "INSTANT INTERCEPT via $source: Killing com.qstar.powerui and launching $targetPackage")
-        RootUtil.instantIntercept(targetPackage)
+        if (mode == OperatingMode.NONE || targetPackage.isBlank()) {
+            stopMonitoring()
+            return
+        }
+
+        // Start the root daemon
+        serviceScope.launch(Dispatchers.IO) {
+            RootDaemonManager.startDaemon(this@MonitorService, mode, targetPackage)
+        }
+
+        // Supervisor loop: periodically verify daemon health
+        supervisorJob?.cancel()
+        supervisorJob = serviceScope.launch {
+            while (isActive) {
+                delay(3000L)
+                val currentMode = preferences.operatingMode
+                val currentTarget = preferences.selectedPackageName
+
+                if (currentMode == OperatingMode.NONE || currentTarget.isBlank()) {
+                    break
+                }
+
+                val isRunning = RootDaemonManager.isDaemonRunning(this@MonitorService)
+                if (!isRunning) {
+                    Log.w(TAG, "Root daemon not running, restarting...")
+                    RootDaemonManager.startDaemon(this@MonitorService, currentMode, currentTarget)
+                }
+            }
+        }
     }
 
     private fun stopMonitoring() {
-        logcatJob?.cancel()
-        pollJob?.cancel()
-        logcatJob = null
-        pollJob = null
+        supervisorJob?.cancel()
+        supervisorJob = null
         preferences.isServiceRunning = false
-        RootUtil.closeWarmShell()
+
+        serviceScope.launch(Dispatchers.IO) {
+            RootDaemonManager.stopDaemon(this@MonitorService)
+        }
+
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (e: Exception) {

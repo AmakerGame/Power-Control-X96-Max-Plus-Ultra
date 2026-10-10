@@ -12,6 +12,7 @@ import com.eds.powercontrol.service.MonitorService
 import com.eds.powercontrol.util.AppHelper
 import com.eds.powercontrol.util.AppPreferences
 import com.eds.powercontrol.util.ForegroundDetector
+import com.eds.powercontrol.util.RootDaemonManager
 import com.eds.powercontrol.util.RootUtil
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -104,6 +105,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun onRootConfirmed() {
         loadInstalledApps()
         checkAndGrantUsageAccessSilently()
+        // Deploy the root daemon script to internal storage
+        RootDaemonManager.deployScript(getApplication())
     }
 
     fun loadInstalledApps() {
@@ -123,7 +126,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun checkAndGrantUsageAccessSilently() {
         viewModelScope.launch {
             val context = getApplication<Application>()
-            // Automatically grant usage stats and read logs permissions via root without accessibility service
             RootUtil.grantPermissionsSilently(context)
             val hasAccess = ForegroundDetector.hasUsageStatsPermission(context)
             _uiState.update { it.copy(hasUsageStatsAccess = hasAccess) }
@@ -158,7 +160,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         preferences.selectedAppName = state.selectedAppName
 
         if (state.operatingMode != OperatingMode.NONE && state.selectedPackageName.isNotBlank()) {
-            // Start background monitoring service
+            // Start root daemon and monitoring service
+            viewModelScope.launch {
+                RootDaemonManager.startDaemon(context, state.operatingMode, state.selectedPackageName)
+            }
             MonitorService.start(context)
             preferences.isServiceRunning = true
             _uiState.update { it.copy(isServiceRunning = true) }
@@ -168,7 +173,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Toast.LENGTH_SHORT
             ).show()
         } else {
-            // Mode is NONE -> stop service and no root is used
+            // Mode is NONE -> stop root daemon and service
+            viewModelScope.launch {
+                RootDaemonManager.stopDaemon(context)
+            }
             MonitorService.stop(context)
             preferences.isServiceRunning = false
             _uiState.update { it.copy(isServiceRunning = false) }
@@ -189,8 +197,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            // Instantly kill com.qstar.powerui and launch target app
-            RootUtil.instantIntercept(targetPackage)
+            // Test direct intercept via root
+            val ok = RootDaemonManager.testDirectIntercept(targetPackage)
 
             val appName = state.selectedAppName.ifBlank { targetPackage }
             Toast.makeText(
@@ -203,8 +211,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshUsagePermission() {
         val context = getApplication<Application>()
-        _uiState.update {
-            it.copy(hasUsageStatsAccess = ForegroundDetector.hasUsageStatsPermission(context))
+        viewModelScope.launch {
+            val daemonActive = RootDaemonManager.isDaemonRunning(context)
+            _uiState.update {
+                it.copy(
+                    hasUsageStatsAccess = ForegroundDetector.hasUsageStatsPermission(context),
+                    isServiceRunning = daemonActive || preferences.isServiceRunning
+                )
+            }
         }
     }
 }

@@ -122,7 +122,7 @@ fun MainTvScreen(
                         color = if (isServiceActive) Color(0xFF1B5E20) else Color(0xFF263238)
                     ) {
                         Text(
-                            text = if (isServiceActive) "АКТИВНИЙ" else "ВИМКНЕНО",
+                            text = if (isServiceActive) "ROOT ДЕМОН: АКТИВНИЙ" else "ДЕМОН: ВИМКНЕНО",
                             color = Color.White,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
