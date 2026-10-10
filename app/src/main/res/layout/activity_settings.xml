@@ -33,7 +33,7 @@
             android:textColor="#CFD8DC"
             android:text="@string/btn_clear"
             android:textSize="13sp"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginEnd="6dp" />
 
         <Button
             android:id="@+id/btnLaunchTarget"
@@ -43,6 +43,16 @@
             android:textColor="#05111D"
             android:text="@string/btn_launch_target"
             android:textStyle="bold"
+            android:textSize="13sp"
+            android:layout_marginEnd="6dp" />
+
+        <Button
+            android:id="@+id/btnExit"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="#37474F"
+            android:textColor="#ECEFF1"
+            android:text="@string/btn_exit"
             android:textSize="13sp" />
     </LinearLayout>
 

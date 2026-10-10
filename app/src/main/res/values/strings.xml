@@ -6,7 +6,8 @@
     <string name="current_target_label">Active target:</string>
     <string name="target_none_selected">None (opens Settings)</string>
     <string name="btn_clear">Clear</string>
-    <string name="btn_launch_target">Launch now</string>
+    <string name="btn_launch_target">Launch</string>
+    <string name="btn_exit">Close</string>
     <string name="toast_saved">Target set: %1$s</string>
     <string name="toast_cleared">Selection cleared</string>
     <string name="toast_launched">Launching %1$s</string>

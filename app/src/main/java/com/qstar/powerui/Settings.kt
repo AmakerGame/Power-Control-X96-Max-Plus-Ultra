@@ -1,9 +1,12 @@
 package com.qstar.powerui
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.Button
 import android.widget.ProgressBar
@@ -20,6 +23,7 @@ class Settings : AppCompatActivity() {
     private lateinit var tvCurrentTarget: TextView
     private lateinit var btnClear: Button
     private lateinit var btnLaunchTarget: Button
+    private lateinit var btnExit: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var tvEmpty: TextView
     private lateinit var rvApps: RecyclerView
@@ -27,10 +31,12 @@ class Settings : AppCompatActivity() {
     private lateinit var adapter: AppAdapter
     private val appList = mutableListOf<AppItem>()
     private val backgroundExecutor = Executors.newSingleThreadExecutor()
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     companion object {
         const val PREFS_NAME = "powerui_prefs"
         const val KEY_TARGET_PACKAGE = "target_package"
+        const val KEY_TARGET_COMPONENT = "target_component"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -42,6 +48,7 @@ class Settings : AppCompatActivity() {
         tvCurrentTarget = findViewById(R.id.tvCurrentTarget)
         btnClear = findViewById(R.id.btnClear)
         btnLaunchTarget = findViewById(R.id.btnLaunchTarget)
+        btnExit = findViewById(R.id.btnExit)
         progressBar = findViewById(R.id.progressBar)
         tvEmpty = findViewById(R.id.tvEmpty)
         rvApps = findViewById(R.id.rvApps)
@@ -62,6 +69,10 @@ class Settings : AppCompatActivity() {
 
         btnLaunchTarget.setOnClickListener {
             launchCurrentTarget()
+        }
+
+        btnExit.setOnClickListener {
+            finishAndRemoveTask()
         }
 
         loadInstalledApps()
@@ -86,16 +97,35 @@ class Settings : AppCompatActivity() {
     }
 
     private fun onAppSelected(app: AppItem) {
-        prefs.edit().putString(KEY_TARGET_PACKAGE, app.packageName).apply()
+        val editor = prefs.edit()
+        editor.putString(KEY_TARGET_PACKAGE, app.packageName)
+        if (!app.componentName.isNullOrBlank()) {
+            editor.putString(KEY_TARGET_COMPONENT, app.componentName)
+        } else {
+            editor.remove(KEY_TARGET_COMPONENT)
+        }
+        editor.apply()
+
         adapter.setSelected(app.packageName)
         updateCurrentTargetHeader(app.packageName)
 
         val message = getString(R.string.toast_saved, app.name)
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+
+        // Automatically close Settings after selection so it never lingers in task stack
+        mainHandler.postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                finishAndRemoveTask()
+            }
+        }, 650)
     }
 
     private fun clearTarget() {
-        prefs.edit().remove(KEY_TARGET_PACKAGE).apply()
+        prefs.edit()
+            .remove(KEY_TARGET_PACKAGE)
+            .remove(KEY_TARGET_COMPONENT)
+            .apply()
+
         adapter.setSelected(null)
         updateCurrentTargetHeader(null)
 
@@ -104,17 +134,38 @@ class Settings : AppCompatActivity() {
 
     private fun launchCurrentTarget() {
         val targetPkg = prefs.getString(KEY_TARGET_PACKAGE, null)
+        val targetComp = prefs.getString(KEY_TARGET_COMPONENT, null)
+
         if (targetPkg.isNullOrBlank()) {
             Toast.makeText(this, getString(R.string.toast_no_target), Toast.LENGTH_SHORT).show()
             return
         }
 
-        val launchIntent = packageManager.getLaunchIntentForPackage(targetPkg)
+        var launchIntent: Intent? = null
+        if (!targetComp.isNullOrBlank()) {
+            try {
+                val comp = ComponentName.unflattenFromString(targetComp)
+                if (comp != null) {
+                    launchIntent = Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_LAUNCHER)
+                        component = comp
+                    }
+                }
+            } catch (e: Exception) {
+                launchIntent = null
+            }
+        }
+
+        if (launchIntent == null) {
+            launchIntent = packageManager.getLaunchIntentForPackage(targetPkg)
+        }
+
         if (launchIntent != null) {
             launchIntent.addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                 Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED or
+                Intent.FLAG_ACTIVITY_NO_ANIMATION
             )
             val appName = try {
                 packageManager.getApplicationLabel(packageManager.getApplicationInfo(targetPkg, 0)).toString()
@@ -123,6 +174,7 @@ class Settings : AppCompatActivity() {
             }
             Toast.makeText(this, getString(R.string.toast_launched, appName), Toast.LENGTH_SHORT).show()
             startActivity(launchIntent)
+            finishAndRemoveTask()
         } else {
             Toast.makeText(this, getString(R.string.toast_no_target), Toast.LENGTH_SHORT).show()
         }
@@ -158,10 +210,18 @@ class Settings : AppCompatActivity() {
                     null
                 }
 
-                loadedApps.add(AppItem(packageName = pkg, name = label, icon = icon))
+                val compName = ComponentName(pkg, ri.activityInfo.name).flattenToString()
+
+                loadedApps.add(
+                    AppItem(
+                        packageName = pkg,
+                        name = label,
+                        icon = icon,
+                        componentName = compName
+                    )
+                )
             }
 
-            // Remove duplicates by package name and sort alphabetically by name
             val distinctApps = loadedApps
                 .distinctBy { it.packageName }
                 .sortedBy { it.name.lowercase() }
@@ -183,5 +243,6 @@ class Settings : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         backgroundExecutor.shutdown()
+        mainHandler.removeCallbacksAndMessages(null)
     }
 }

@@ -6,7 +6,8 @@
     <string name="current_target_label">Поточна ціль:</string>
     <string name="target_none_selected">Не обрано (відкриватимуться налаштування)</string>
     <string name="btn_clear">Очистити</string>
-    <string name="btn_launch_target">Запустити зараз</string>
+    <string name="btn_launch_target">Запустити</string>
+    <string name="btn_exit">Закрити</string>
     <string name="toast_saved">Збережено: %1$s</string>
     <string name="toast_cleared">Вибір скинуто</string>
     <string name="toast_launched">Запуск %1$s</string>

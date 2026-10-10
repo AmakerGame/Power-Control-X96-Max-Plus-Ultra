@@ -16,14 +16,15 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.PowerUI">
 
-        <!-- 1. MainActivity: Proxy-launcher (HOME category, singleTask, noHistory, invisible) -->
+        <!-- 1. MainActivity: Proxy-launcher (HOME category, singleInstance, independent task, 0ms delay) -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleInstance"
+            android:taskAffinity=""
             android:noHistory="true"
             android:excludeFromRecents="true"
-            android:theme="@style/Theme.PowerUI.Transparent">
+            android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
@@ -31,11 +32,15 @@
             </intent-filter>
         </activity>
 
-        <!-- 2. Settings: The only visible launcher icon in standard & TV launcher -->
+        <!-- 2. Settings: Distinct task, automatically finishes on leave, cannot block MainActivity -->
         <activity
             android:name=".Settings"
             android:exported="true"
             android:label="@string/app_name"
+            android:taskAffinity="com.qstar.powerui.settings"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:finishOnTaskLaunch="true"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
             android:banner="@drawable/tv_banner"

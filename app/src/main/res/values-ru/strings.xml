@@ -6,7 +6,8 @@
     <string name="current_target_label">Текущая цель:</string>
     <string name="target_none_selected">Не выбрано (будут открываться настройки)</string>
     <string name="btn_clear">Очистить</string>
-    <string name="btn_launch_target">Запустить сейчас</string>
+    <string name="btn_launch_target">Запустить</string>
+    <string name="btn_exit">Закрыть</string>
     <string name="toast_saved">Выбрано: %1$s</string>
     <string name="toast_cleared">Выбор очищен</string>
     <string name="toast_launched">Запуск %1$s</string>
